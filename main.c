@@ -1,9 +1,9 @@
 /*
  *--------------------------------------
- * Program Name:
- * Author:
- * License:
- * Description:
+ * Program Name: A Game Of A Game Of Life
+ * Author: slimeenergy
+ * License: None, please don't steal it.
+ * Description: https://www.cemetech.net/forum/viewtopic.php?p=280363
  *--------------------------------------
 */
 
