@@ -26,6 +26,11 @@
 #define GAME_NAME "Game of Game of Life"
 #define FONT_HEIGHT 8
 #define EMPTY_FUNC_MENU_OPTION "\0"
+#define CUSTOM_PALETTE_SIZE 13
+//The speed at which tiles fade in and out with a fancy background
+#define FANCY_SPEED 4
+//How many fancy tiles should there be in splash screen
+#define FANCY_TILE_COUNT 6
 #define WIN_TEXT_LESS_FIVE "I believe this is below average, level %d!"
 #define WIN_TEXT_LESS_TEN "Nice, you did well! You made it to level %d."
 #define WIN_TEXT_MORE_TEN "Amazing job! Level %d, double factorial!!"
@@ -58,13 +63,19 @@ typedef struct {
     uint24_t timer_seconds; //Amount of seconds counted by timer so far.
 } game_t;
 
+typedef struct {
+    uint8_t pos_x;
+    uint8_t pos_y;
+    uint8_t progress;
+} fancy_tile_t;
+
 /* Put your function prototypes here */
 void update();
 void update_scene();
 
 void render();
 void render_scene();
-void render_background();
+void render_background(bool fancy);
 void render_centered_string(char* str, uint24_t x, uint8_t y);
 void render_level();
 
@@ -75,6 +86,8 @@ void next_level();
 void iterate_level();
 void clear_level(bool cells,bool selected);
 bool compare_selection_level();
+
+void update_and_render_fancy_tile(fancy_tile_t* tile);
 
 bool key_up_pressed();
 bool key_down_pressed();
@@ -101,11 +114,28 @@ uint8_t game.level = 0;*/
 
 game_t game = {true,false,NULL,0,0,0,0,0};
 
+uint16_t custom_palette[CUSTOM_PALETTE_SIZE] = {
+    gfx_RGBTo1555(0,0,0),       //00, Black
+    gfx_RGBTo1555(0,0,255),     //01, Full Blue Tile
+    gfx_RGBTo1555(30,30,255),   //02, Slightly Less Blue Tile
+    gfx_RGBTo1555(60,60,255),   //03, Slightly Slightly Less Blue Tile
+    gfx_RGBTo1555(90,90,255),   //04, Slightly Slightly Slightly Less Blue Tile
+    gfx_RGBTo1555(120,120,255), //05, Slightly Slightly Slightly Slightly Less Blue Tile
+    gfx_RGBTo1555(150,150,255), //06, Slightly Slightly Slightly Slightly Slightly Less Blue Tile
+    gfx_RGBTo1555(180,180,255), //07, Slightly Slightly Slightly Slightly Slightly Slightly Less Blue Tile
+    gfx_RGBTo1555(210,210,255), //08, Slightly Slightly Slightly Slightly Slightly Slightly Slightly Less Blue Tile
+    gfx_RGBTo1555(240,240,255), //09, Slightly Slightly Slightly Slightly Slightly Slightly Slightly Slightly Less Blue Tile
+    gfx_RGBTo1555(255,255,255), //10, White
+    gfx_RGBTo1555(143,43,43),   //11, Red
+    gfx_RGBTo1555(80,24,24),    //12, Dark Red
+};
+
 void main() {
     timer_1_MatchValue_1 = SECOND;
     srandom(rtc_Time());
     ti_CloseAll();
     gfx_Begin();
+    gfx_SetPalette(custom_palette,CUSTOM_PALETTE_SIZE*2,0);
     while(game.running) {
         kb_Scan();
 
@@ -209,18 +239,18 @@ void update_scene() {
 }
 
 void render() {
-    render_background(false);
     render_scene();
 }
 void render_scene () {
     if(game.scene == 0) {
         uint8_t i;
+        render_background(true);
         gfx_SetTextFGColor(0);
         gfx_SetTextScale(2,2);
         render_centered_string(GAME_NAME,LCD_WIDTH/2,LCD_HEIGHT/4);
         for(i = 0; i < 3; i++) {
             if(i == game.cursor_pos) {
-                gfx_SetTextFGColor(0xC0);
+                gfx_SetTextFGColor(11);
             } else {
                 gfx_SetTextFGColor(0);
             }
@@ -237,6 +267,7 @@ void render_scene () {
         gfx_SetTextScale(1,1);
     } else if(game.scene == 1) {
         char* fsa = malloc(strlen("Level 255"));
+        render_background(false);
         gfx_SetTextScale(2,2);
         sprintf(fsa,"Level %d",game.level+1);
         render_centered_string(fsa,LCD_WIDTH/2,LCD_HEIGHT/4);
@@ -246,6 +277,7 @@ void render_scene () {
     } else if(game.scene == 2) {
         uint24_t w,h;
         char* seconds;
+        render_background(false);
         if(game.timing)  {
             //If the timer ever gets past 9999s then something must have gone severely wrong in this game's development.
             seconds = malloc(strlen("1337s"));
@@ -256,17 +288,17 @@ void render_scene () {
         w = LCD_WIDTH/game.playing_level->width;
         h = LCD_HEIGHT/game.playing_level->height;
         render_level();
-        gfx_SetColor(0xC1);
+        gfx_SetColor(11);
         gfx_Rectangle(game.cursor_pos2*w,game.cursor_pos*h,w,h);
 
-        gfx_SetColor(0xC1);
-        
+        gfx_SetColor(0);        
         gfx_PrintStringXY(seconds,3,3);
         if(game.timing) {
             free(seconds);
         }
     } else if(game.scene == 3) {
         char* fsa;
+        render_background(false);
 
         if(game.timer_seconds > TIME_LIMIT) {
             fsa = malloc(strlen(WIN_TEXT_NO_TIME)+1);
@@ -295,7 +327,39 @@ void render_scene () {
 }
 //If fancy is true, a fancy and distracting background will be made. TODO: Make the fancy background. My idea would be a grid with tiles fading in and out.
 void render_background(bool fancy) {
-    gfx_FillScreen(0xFF);
+    //iterators
+    uint24_t i;
+    gfx_FillScreen(10); //white
+
+    //The fancy background could probably be rewritten to be more efficient
+    if(fancy) {
+        //The fancy tile array
+        static fancy_tile_t tiles[FANCY_TILE_COUNT] = 0;
+        //Whether or not the fancy tile array has been initialized
+        static bool initialized = false;
+        if(!initialized) {
+            //Give new tiles random positions and progresses
+            for(i = 0; i < FANCY_TILE_COUNT; i++) {
+                tiles[i].pos_x = randInt(0,7);
+                tiles[i].pos_y = randInt(0,5);
+                tiles[i].progress = randInt(0,255);
+            }
+            initialized = true;
+        }
+        //Update and render all fancy tiles
+        for(i = 0; i < FANCY_TILE_COUNT; i++) {
+            update_and_render_fancy_tile(&tiles[i]);
+        }
+
+        //Render grid
+        gfx_SetColor(0);
+        for(i = 0; i < 8; i++) {
+            gfx_Rectangle(i*40,0,40,240);
+        }
+        for(i = 0; i < 6; i++) {
+            gfx_Rectangle(0,i*40,320,40);
+        }
+    }
 }
 void render_centered_string(char* str,uint24_t x, uint8_t y) {
     gfx_PrintStringXY(str,x - (gfx_GetStringWidth(str)/2),y - (FONT_HEIGHT/2));
@@ -413,16 +477,16 @@ void render_level() {
             bool state2 = game.playing_level->selected_cells[i*game.playing_level->width+j];
             //If state is true, then the cell is alive.
             if(state) {
-                gfx_SetColor(0x1C);
+                gfx_SetColor(1);
                 if(state2) {
-                    gfx_SetColor(0x80);
+                    gfx_SetColor(12);
                 }
                 gfx_FillRectangle(j*tile_width,i*tile_height,tile_width,tile_height);
             } else if(state2) {
-                gfx_SetColor(0xC0);
+                gfx_SetColor(11);
                 gfx_FillRectangle(j*tile_width,i*tile_height,tile_width,tile_height);
             }
-            gfx_SetColor(0x00);
+            gfx_SetColor(0);
             gfx_Rectangle(j*tile_width,i*tile_height,tile_width,tile_height);
         }
     }
@@ -540,6 +604,27 @@ void end_timer() {
     timer_1_Counter = 0;
 }
 
+void update_and_render_fancy_tile(fancy_tile_t* tile) {
+    //Progress will be 0-255. 128 will be when it's fully blue, going up from 0-128 will be becoming blue, then 128-255 will be going to white.
+    //There are 10 different states of the gradient/animation. gfx_SetColor(01-10);
+    //if progress <= 128, calculate the color with something similar to 10-round(progress/128*9+1). Otherwise, calculate the color with round((progress)/128*9+1).
+    //If progress >= 255, then set a new position.
+    uint8_t color_index = 0;
+    if(tile->progress <= 128) {
+        color_index = ceil(10-((tile->progress)/128.0f*9.0f));
+    } else {
+        color_index = floor((tile->progress-128)/128.0f*9.0f+1);
+    }
+    gfx_SetColor(color_index);
+    gfx_FillRectangle(tile->pos_x*40,tile->pos_y*40,40,40);
+
+    if(color_index == 10) {
+        tile->pos_x = randInt(0,7);
+        tile->pos_y = randInt(0,5);
+    }
+
+    tile->progress += FANCY_SPEED;
+}
 /*
 Obselete; Function "randInt" provided by C libs.
 uint8_t random_number(uint8_t minimum,uint8_t maximum) {
