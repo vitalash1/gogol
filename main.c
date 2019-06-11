@@ -77,10 +77,11 @@ void render();
 void render_scene();
 void render_background(bool fancy);
 void render_centered_string(char* str, uint24_t x, uint8_t y);
+void render_centered_string_outline(char* str,uint24_t x, uint8_t y, uint8_t fill,uint8_t stroke);
 void render_level();
 
 void add_cells_to_level(uint24_t cell_count);
-level_t* generate_level(uint8_t width, uint8_t height, uint24_t cell_count);
+level_t* generate_level(uint8_t width, uint8_t height, uint24_t cell_count, bool one_birth);
 void create_new_level(uint8_t width, uint8_t height, uint24_t cell_count);
 void destroy_level();
 void next_level();
@@ -285,15 +286,18 @@ void render_scene () {
         uint8_t i;
         char *fsa = malloc(strlen("Highscore: Level 255"));
         render_background(true);
-        gfx_SetTextFGColor(0);
         gfx_SetTextScale(2,2);
-        render_centered_string(GAME_NAME,LCD_WIDTH/2,LCD_HEIGHT/4);
+        gfx_SetTextFGColor(10);
+        render_centered_string_outline(GAME_NAME,LCD_WIDTH/2,LCD_HEIGHT/4,0,10);
+
         for(i = 0; i < 5; i++) {
+            uint8_t clr;
             if(i == game.cursor_pos) {
-                gfx_SetTextFGColor(11);
+                clr = 11;
             } else {
-                gfx_SetTextFGColor(0);
+                clr = 0;
             }
+            gfx_SetTextFGColor(clr);
             if(i == 0) {
                 render_centered_string("Play",LCD_WIDTH/2,LCD_HEIGHT/4+FONT_HEIGHT*4);
             }
@@ -313,7 +317,7 @@ void render_scene () {
         sprintf(fsa,"Highscore: Level %d",game.highscore);
         gfx_SetTextFGColor(0);
         gfx_SetTextScale(1,1);
-        render_centered_string(fsa,LCD_WIDTH/2,15);
+        render_centered_string_outline(fsa,LCD_WIDTH/2,15,0,10);
         free(fsa);
     } else if(game.scene == 1) {
         char* fsa = malloc(strlen("Level 255"));
@@ -373,7 +377,7 @@ void render_scene () {
         render_centered_string("Press Enter",LCD_WIDTH/2,LCD_HEIGHT*3/4);
         free(fsa);
     } else if(game.scene == 4) {
-        render_background(false);
+        render_background(true);
         gfx_SetTextFGColor(0);
         gfx_SetTextScale(2,2);
         render_centered_string("Game by slimeenergy",LCD_WIDTH/2,LCD_HEIGHT/2-FONT_HEIGHT*1.5);
@@ -390,7 +394,7 @@ void render_scene () {
         gfx_PrintStringXY("Press 2nd on cells to mark/unmmark them.",2,FONT_HEIGHT*6);
         gfx_PrintStringXY("Mark cells that will be alive next generation.",2,FONT_HEIGHT*7.5);
         gfx_PrintStringXY("Cells that are alive carry on to the next level.",2,FONT_HEIGHT*9);
-        gfx_PrintStringXY("Each level has 6+2*level cells plus",2,FONT_HEIGHT*10.5);
+        gfx_PrintStringXY("Each level has 6+level cells, plus",2,FONT_HEIGHT*10.5);
         gfx_PrintStringXY("what was alive from the last generation.",2,FONT_HEIGHT*12);
         gfx_PrintStringXY("Press enter to skip the timer.",2,FONT_HEIGHT*13.5);
         gfx_PrintStringXY("Press enter once the timer runs out to",2,FONT_HEIGHT*15);
@@ -436,6 +440,16 @@ void render_background(bool fancy) {
     }
 }
 void render_centered_string(char* str,uint24_t x, uint8_t y) {
+    gfx_PrintStringXY(str,x - (gfx_GetStringWidth(str)/2),y - (FONT_HEIGHT/2));
+}
+//Warning: This method is slow
+void render_centered_string_outline(char* str,uint24_t x, uint8_t y, uint8_t fill,uint8_t stroke) {
+    gfx_SetTextFGColor(stroke);
+    gfx_PrintStringXY(str,x - (gfx_GetStringWidth(str)/2)-1,y - (FONT_HEIGHT/2));
+    gfx_PrintStringXY(str,x - (gfx_GetStringWidth(str)/2)+1,y - (FONT_HEIGHT/2));
+    gfx_PrintStringXY(str,x - (gfx_GetStringWidth(str)/2),y - (FONT_HEIGHT/2)-1);
+    gfx_PrintStringXY(str,x - (gfx_GetStringWidth(str)/2),y - (FONT_HEIGHT/2)+1);
+    gfx_SetTextFGColor(fill);
     gfx_PrintStringXY(str,x - (gfx_GetStringWidth(str)/2),y - (FONT_HEIGHT/2));
 }
 //This does one generation on the game.level currently being played. <!> It may not work <!>
@@ -499,8 +513,8 @@ bool compare_selection_level() {
     return true;
 }
 //Returns a new game.level.
-level_t* generate_level(uint8_t width, uint8_t height, uint24_t cell_count) {
-    uint24_t i;
+level_t* generate_level(uint8_t width, uint8_t height, uint24_t cell_count, bool one_birth) {
+    uint24_t i,j;
     level_t* out = malloc(sizeof(level_t));
     out->width = width;
     out->height = height;
@@ -511,17 +525,59 @@ level_t* generate_level(uint8_t width, uint8_t height, uint24_t cell_count) {
         out->cells[i] = false;
         out->selected_cells[i] = false;
     }
-    for(i = 0; i < min(255,cell_count); i++) {
-        //Whether or not the cell has generated yet. The program will try to generate cells at random locations but won't generate if there's already a cell there. If done is false then there is already a cell there.
-        bool done = false;
+    if(one_birth) {
+        uint24_t xp,yp;
+        bool doneone=false;
+        while(!doneone) {
+            for(i = 0; i < width*height; i++) {
+                out->cells[i] = false;
+            }
+            for(i = 0; i < min(255,cell_count); i++) {
+                //Whether or not the cell has generated yet. The program will try to generate cells at random locations but won't generate if there's already a cell there. If done is false then there is already a cell there.
+                bool done = false;
 
-        while(!done) {
-            uint8_t x,y;
-            x = randInt(0,width);
-            y = randInt(0,height);
-            if(!out->cells[y*(width-1)+x]) {
-                out->cells[y*(width-1)+x] = true;
-                done = true;
+                while(!done) {
+                    uint8_t x,y;
+                    x = randInt(0,width);
+                    y = randInt(0,height);
+                    if(!out->cells[y*(width-1)+x]) {
+                        out->cells[y*(width-1)+x] = true;
+                        done = true;
+                    }
+                }
+            }
+            for(i = 0; i < height; i++) {
+                for(j = 0; j < width; j++) {
+                    uint8_t neighbors = 0;
+                    //Counting neighbors
+                    for(yp = max(0,i-1); yp < min(height,i+2); yp++) {
+                        for(xp = max(0,j-1); xp < min(width,j+2); xp++) {
+                            if(!(xp == j && yp == i)) {
+                                if(out->cells[yp*width+xp] == true) {
+                                    neighbors++;
+                                }
+                            }
+                        }
+                    }
+                    if(neighbors == 3) {
+                        doneone = true;
+                        break;
+                    }
+                }
+            }
+        }
+    } else {
+        for(i = 0; i < min(255,cell_count); i++) {
+            //Whether or not the cell has generated yet. The program will try to generate cells at random locations but won't generate if there's already a cell there. If done is false then there is already a cell there.
+            bool done = false;
+            while(!done) {
+                uint8_t x,y;
+                x = randInt(0,width);
+                y = randInt(0,height);
+                if(!out->cells[y*(width-1)+x]) {
+                    out->cells[y*(width-1)+x] = true;
+                    done = true;
+                }
             }
         }
     }
@@ -558,7 +614,7 @@ void destroy_level() {
 //Frees the memory of the current game.level, then generates a new game.level and sets "game.playing_level" to that new game.level.
 void create_new_level(uint8_t width, uint8_t height, uint24_t cell_count) {
     destroy_level();
-    game.playing_level = generate_level(width,height,cell_count);
+    game.playing_level = generate_level(width,height,cell_count,true);
 }
 void render_level() {
     uint24_t tile_width, j;
@@ -580,9 +636,14 @@ void render_level() {
                 gfx_SetColor(11);
                 gfx_FillRectangle(j*tile_width,i*tile_height,tile_width,tile_height);
             }
-            gfx_SetColor(0);
-            gfx_Rectangle(j*tile_width,i*tile_height,tile_width,tile_height);
         }
+    }
+    gfx_SetColor(0);
+    for(i = 0; i < game.playing_level->width; i++) {
+        gfx_Rectangle(i*tile_width,0,tile_width,240);
+    }
+    for(i = 0; i < game.playing_level->height; i++) {
+        gfx_Rectangle(0,i*tile_height,320,tile_height);
     }
 }
 
