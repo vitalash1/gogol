@@ -392,15 +392,16 @@ void render_scene () {
         gfx_PrintStringXY("Press enter to select an option.",2,FONT_HEIGHT*3);
         gfx_PrintStringXY("When in game, arrow keys move the cursor.",2,FONT_HEIGHT*4.5);
         gfx_PrintStringXY("Press 2nd on cells to mark/unmmark them.",2,FONT_HEIGHT*6);
-        gfx_PrintStringXY("Mark cells that will be alive next generation.",2,FONT_HEIGHT*7.5);
-        gfx_PrintStringXY("Cells that are alive carry on to the next level.",2,FONT_HEIGHT*9);
-        gfx_PrintStringXY("Each level has 6+level cells, plus",2,FONT_HEIGHT*10.5);
-        gfx_PrintStringXY("what was alive from the last generation.",2,FONT_HEIGHT*12);
+        gfx_PrintStringXY("The goal is to mark cells that will be.",2,FONT_HEIGHT*7.5);
+        gfx_PrintStringXY("alive in the next iteration. Cells that.",2,FONT_HEIGHT*9);
+        gfx_PrintStringXY("are alive will carry onto the next level.",2,FONT_HEIGHT*10.5);
+        gfx_PrintStringXY("Also, more cells appear per level.",2,FONT_HEIGHT*12);
         gfx_PrintStringXY("Press enter to skip the timer.",2,FONT_HEIGHT*13.5);
         gfx_PrintStringXY("Press enter once the timer runs out to",2,FONT_HEIGHT*15);
         gfx_PrintStringXY("go to the next level.",2,FONT_HEIGHT*16.5);
         gfx_PrintStringXY("When the timer runs out the world iterates",2,FONT_HEIGHT*18);
         gfx_PrintStringXY("so you may see if you guessed correctly.",2,FONT_HEIGHT*19.5);
+        gfx_PrintStringXY("Press clear to quit at any time.",2,FONT_HEIGHT*22);
     }
 }
 //If fancy is true, a fancy and distracting background will be made. TODO: Make the fancy background. My idea would be a grid with tiles fading in and out.
@@ -638,6 +639,7 @@ void render_level() {
             }
         }
     }
+    
     gfx_SetColor(0);
     for(i = 0; i < game.playing_level->width; i++) {
         gfx_Rectangle(i*tile_width,0,tile_width,240);
