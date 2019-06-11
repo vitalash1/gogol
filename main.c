@@ -27,23 +27,19 @@
 #define FONT_HEIGHT 8
 #define EMPTY_FUNC_MENU_OPTION "\0"
 #define CUSTOM_PALETTE_SIZE 13
-//The speed at which tiles fade in and out with a fancy background
-#define FANCY_SPEED 4
-//How many fancy tiles should there be in splash screen
-#define FANCY_TILE_COUNT 6
-#define WIN_TEXT_LESS_FIVE "I believe this is below average, level %d!"
-#define WIN_TEXT_LESS_TEN "Nice, you did well! You made it to level %d."
-#define WIN_TEXT_MORE_TEN "Amazing job! Level %d, double factorial!!"
-#define WIN_TEXT_HIGHSCORE "You beat your highscore with level %d!"
-#define WIN_TEXT_NO_TIME "We all run out of time eventually. Level %d."
-
-#define ALIVE_CELLS_PER_LEVEL 3
+#define FANCY_SPEED 4 //The speed at which tiles fade in and out with a fancy background
+#define FANCY_TILE_COUNT 6 //How many fancy tiles should there be in splash screen
+#define TIME_LIMIT 60 //The counter will count upwards until it reaches TIME_LIMIT. It is displayed as TIME_LIMIT-counter
+#define ALIVE_CELLS_PER_LEVEL 2
 #define ALIVE_CELLS_BASE 6
 
 //All of the timer code was stolen from the "second_counter2" example because I barely have an idea on how it works.
 #define SECOND 32768/1
-//The counter will count upwards until it reaches TIME_LIMIT. It is displayed as TIME_LIMIT-counter
-#define TIME_LIMIT 40
+
+#define WIN_TEXT_LESS_FIVE "I believe this is below average, level %d!"
+#define WIN_TEXT_LESS_TEN "Nice, you did well! You made it to level %d."
+#define WIN_TEXT_MORE_TEN "Amazing job! Level %d, double factorial!!"
+#define WIN_TEXT_HIGHSCORE "You beat your highscore with level %d!"
 
 typedef struct {
     uint8_t width;
@@ -56,11 +52,12 @@ typedef struct {
     bool running; //Whether or not the main game loop should loop
     bool timing; //Whether or not a timer should be counting the number of seconds that have gone by since it started.
     level_t* playing_level; //Current level structure being played.
-    uint8_t scene; //Current game.scene. game.scenes: 0 Main Menu, 1 game.level Start Screen, 2 Play, 3 Win/Lose, 4 Credits, 5 How To
+    uint8_t scene; //Current game.scene. game.scenes: 0 Main Menu, 1 Level Start Screen, 2 Play, 3 Win/Lose, 4 Credits, 5 How To Play
     uint8_t cursor_pos; //Y cursor position
     uint8_t cursor_pos2; //X cursor position
     uint8_t level; //The current level being played.
     uint24_t timer_seconds; //Amount of seconds counted by timer so far.
+    uint8_t highscore;
 } game_t;
 
 typedef struct {
@@ -79,6 +76,7 @@ void render_background(bool fancy);
 void render_centered_string(char* str, uint24_t x, uint8_t y);
 void render_level();
 
+void add_cells_to_level(uint24_t cell_count);
 level_t* generate_level(uint8_t width, uint8_t height, uint24_t cell_count);
 void create_new_level(uint8_t width, uint8_t height, uint24_t cell_count);
 void destroy_level();
@@ -99,8 +97,13 @@ bool key_second_pressed();
 void start_timer();
 void update_timer();
 void end_timer();
+void time_up();
 
-uint8_t random_number(uint8_t minimum,uint8_t maximum);
+void set_default_stats();
+void reset_stats();
+void save_stats();
+
+//uint8_t random_number(uint8_t minimum,uint8_t maximum);
 
 int24_t min(int24_t a, int24_t b);
 int24_t max(int24_t a, int24_t b);
@@ -112,7 +115,7 @@ uint8_t game.cursor_pos = 0;
 uint8_t game.cursor_pos2 = 0;
 uint8_t game.level = 0;*/
 
-game_t game = {true,false,NULL,0,0,0,0,0};
+game_t game = {true,false,NULL,0,0,0,0,0,0};
 
 uint16_t custom_palette[CUSTOM_PALETTE_SIZE] = {
     gfx_RGBTo1555(0,0,0),       //00, Black
@@ -126,8 +129,8 @@ uint16_t custom_palette[CUSTOM_PALETTE_SIZE] = {
     gfx_RGBTo1555(210,210,255), //08, Slightly Slightly Slightly Slightly Slightly Slightly Slightly Less Blue Tile
     gfx_RGBTo1555(240,240,255), //09, Slightly Slightly Slightly Slightly Slightly Slightly Slightly Slightly Less Blue Tile
     gfx_RGBTo1555(255,255,255), //10, White
-    gfx_RGBTo1555(143,43,43),   //11, Red
-    gfx_RGBTo1555(80,24,24),    //12, Dark Red
+    gfx_RGBTo1555(255,43,43),   //11, Red
+    gfx_RGBTo1555(155,24,24)   //12, Dark Red
 };
 
 void main() {
@@ -136,6 +139,8 @@ void main() {
     ti_CloseAll();
     gfx_Begin();
     gfx_SetPalette(custom_palette,CUSTOM_PALETTE_SIZE*2,0);
+
+    set_default_stats();
     while(game.running) {
         kb_Scan();
 
@@ -144,6 +149,7 @@ void main() {
 
         gfx_SwapDraw();
     }
+    save_stats();
     destroy_level();
     gfx_End();
 }
@@ -163,7 +169,7 @@ void update_scene() {
     if(game.scene == 0) {
         //Main menu options are "Play" "Credits" "Exit"
         if(key_down_pressed()) {
-            game.cursor_pos = min(2,game.cursor_pos+1);
+            game.cursor_pos = min(4,game.cursor_pos+1);
         }
         if(key_up_pressed()) {
             game.cursor_pos = max(0,game.cursor_pos-1);
@@ -175,12 +181,18 @@ void update_scene() {
             if(game.cursor_pos == 2) {
                 game.running = false;
             }
+            if(game.cursor_pos == 3) {
+                game.scene = 5;
+            }
+            if(game.cursor_pos == 4) {
+                reset_stats();
+            }
         }
     } else if(game.scene == 1) {
         if(key_enter_pressed()) {
             gfx_SetTextScale(2,2);
-            render_centered_string("Generating level",LCD_WIDTH/2,LCD_HEIGHT/2-FONT_HEIGHT);
-            render_centered_string("Please wait...",LCD_WIDTH/2,LCD_HEIGHT/2+FONT_HEIGHT);
+            render_centered_string("Generating Level",LCD_WIDTH/2,LCD_HEIGHT/2-FONT_HEIGHT);
+            render_centered_string("Please Wait...",LCD_WIDTH/2,LCD_HEIGHT/2+FONT_HEIGHT);
             gfx_SetTextScale(1,1);
             gfx_SwapDraw();
             next_level();
@@ -208,14 +220,14 @@ void update_scene() {
                 game.playing_level->selected_cells[game.cursor_pos*game.playing_level->width+game.cursor_pos2] = !game.playing_level->selected_cells[game.cursor_pos*game.playing_level->width+game.cursor_pos2];
             }
             if(game.timer_seconds > TIME_LIMIT) {
-                game.scene = 3;
+                time_up();
+                timer_finished = true;
                 //loser
             }
         }
         if(key_enter_pressed()) {
             if(!timer_finished) {
-                end_timer();
-                iterate_level();
+                time_up();
                 timer_finished = true;
             } else {
                 if(compare_selection_level()) {
@@ -224,6 +236,11 @@ void update_scene() {
                 } else {
                     //Lose.
                     game.scene = 3;
+                    if(game.level > game.highscore) {
+                        game.highscore = game.level;
+                        game.level = -1;
+                        save_stats();
+                    }
                 }
             }
         }
@@ -235,7 +252,19 @@ void update_scene() {
             game.cursor_pos = 0;
             game.level = 0;
         }
+    } else if(game.scene == 4) {
+
+    } else if(game.scene == 5) {
+        if(key_enter_pressed()) {
+            game.scene = 0;
+        }
     }
+}
+
+//time is up. End timer. Iterate level.
+void time_up() {
+    end_timer();
+    iterate_level();
 }
 
 void render() {
@@ -244,11 +273,12 @@ void render() {
 void render_scene () {
     if(game.scene == 0) {
         uint8_t i;
+        char *fsa = malloc(strlen("Highscore: Level 255"));
         render_background(true);
         gfx_SetTextFGColor(0);
         gfx_SetTextScale(2,2);
         render_centered_string(GAME_NAME,LCD_WIDTH/2,LCD_HEIGHT/4);
-        for(i = 0; i < 3; i++) {
+        for(i = 0; i < 5; i++) {
             if(i == game.cursor_pos) {
                 gfx_SetTextFGColor(11);
             } else {
@@ -258,13 +288,23 @@ void render_scene () {
                 render_centered_string("Play",LCD_WIDTH/2,LCD_HEIGHT/4+FONT_HEIGHT*4);
             }
             if(i == 1) {
-                render_centered_string("Credits",LCD_WIDTH/2,LCD_HEIGHT/4+FONT_HEIGHT*6);
+                render_centered_string("Credits",LCD_WIDTH/2,LCD_HEIGHT/4+FONT_HEIGHT*6.5);
             }
             if(i == 2) {
-                render_centered_string("Exit",LCD_WIDTH/2,LCD_HEIGHT/4+FONT_HEIGHT*8);
+                render_centered_string("Exit",LCD_WIDTH/2,LCD_HEIGHT/4+FONT_HEIGHT*9);
+            }
+            if(i == 3) {
+                render_centered_string("How To Play",LCD_WIDTH/2,LCD_HEIGHT/4+FONT_HEIGHT*11.5);
+            }
+            if(i == 4) {
+                render_centered_string("!RESET STATS!",LCD_WIDTH/2,LCD_HEIGHT/4+FONT_HEIGHT*14);
             }
         }
+        sprintf(fsa,"Highscore: Level %d",game.highscore);
+        gfx_SetTextFGColor(0);
         gfx_SetTextScale(1,1);
+        render_centered_string(fsa,LCD_WIDTH/2,15);
+        free(fsa);
     } else if(game.scene == 1) {
         char* fsa = malloc(strlen("Level 255"));
         render_background(false);
@@ -299,15 +339,8 @@ void render_scene () {
     } else if(game.scene == 3) {
         char* fsa;
         render_background(false);
-
-        if(game.timer_seconds > TIME_LIMIT) {
-            fsa = malloc(strlen(WIN_TEXT_NO_TIME)+1);
-            sprintf(fsa,WIN_TEXT_NO_TIME,game.level);
-            if(game.timing) {
-                end_timer();
-            }
-        } else {
-            //todo: add checking for highscores that will take the place of the normal texts.
+        //if 255 then it's a highscore, because I set the level to -1. If not then it's not a highscore
+        if(game.level != 0xFF) {
             if(game.level <= 5) {
                 //Plus one because the level could be more than two digits, it will be at most three.
                 fsa = malloc(strlen(WIN_TEXT_LESS_FIVE)+1);
@@ -319,10 +352,33 @@ void render_scene () {
                 fsa = malloc(strlen(WIN_TEXT_MORE_TEN)+1);
                 sprintf(fsa,WIN_TEXT_MORE_TEN,game.level);
             }
+        } else { //It's a highscore.
+            fsa = malloc(strlen(WIN_TEXT_HIGHSCORE)+1);
+            sprintf(fsa,WIN_TEXT_HIGHSCORE,game.highscore);
         }
         render_centered_string(fsa,LCD_WIDTH/2,LCD_HEIGHT/4);
         render_centered_string("Press Enter",LCD_WIDTH/2,LCD_HEIGHT*3/4);
         free(fsa);
+    } else if(game.scene == 4) {
+
+    } else if(game.scene == 5) {
+        render_background(false);
+        gfx_SetTextFGColor(0);
+        //If anyone wants to rewrite these directions to make sense that would be good.
+        gfx_PrintStringXY("Use the arrow keys to navigate menus.",2,1);
+        gfx_PrintStringXY("Press enter to leave the How To Play menu.",2,FONT_HEIGHT*1.5);
+        gfx_PrintStringXY("Press enter to select an option.",2,FONT_HEIGHT*3);
+        gfx_PrintStringXY("When in game, arrow keys move the cursor.",2,FONT_HEIGHT*4.5);
+        gfx_PrintStringXY("Press 2nd on cells to mark/unmmark them.",2,FONT_HEIGHT*6);
+        gfx_PrintStringXY("Mark cells that will be alive next generation.",2,FONT_HEIGHT*7.5);
+        gfx_PrintStringXY("Cells that are alive carry on to the next level.",2,FONT_HEIGHT*9);
+        gfx_PrintStringXY("Each level has 6+2*level cells plus",2,FONT_HEIGHT*10.5);
+        gfx_PrintStringXY("what was alive from the last generation.",2,FONT_HEIGHT*12);
+        gfx_PrintStringXY("Press enter to skip the timer.",2,FONT_HEIGHT*13.5);
+        gfx_PrintStringXY("Press enter once the timer runs out to",2,FONT_HEIGHT*15);
+        gfx_PrintStringXY("go to the next level.",2,FONT_HEIGHT*16.5);
+        gfx_PrintStringXY("When the timer runs out the world iterates",2,FONT_HEIGHT*18);
+        gfx_PrintStringXY("so you may see if you guessed correctly.",2,FONT_HEIGHT*19.5);
     }
 }
 //If fancy is true, a fancy and distracting background will be made. TODO: Make the fancy background. My idea would be a grid with tiles fading in and out.
@@ -437,7 +493,7 @@ level_t* generate_level(uint8_t width, uint8_t height, uint24_t cell_count) {
         out->cells[i] = false;
         out->selected_cells[i] = false;
     }
-    for(i = 0; i < cell_count; i++) {
+    for(i = 0; i < min(255,cell_count); i++) {
         //Whether or not the cell has generated yet. The program will try to generate cells at random locations but won't generate if there's already a cell there. If done is false then there is already a cell there.
         bool done = false;
 
@@ -452,6 +508,26 @@ level_t* generate_level(uint8_t width, uint8_t height, uint24_t cell_count) {
         }
     }
     return out;
+}
+void add_cells_to_level(uint24_t cell_count) {
+    uint24_t i;
+    for(i = 0; i < cell_count; i++) {
+        //Whether or not the cell has generated yet. The program will try to generate cells at random locations but won't generate if there's already a cell there. If done is false then there is already a cell there.
+        //Yes, this code was copy and pasted from the generate_level function
+        bool done = false;
+        uint16_t tries = 0;
+        while(!done && tries < 15) {
+            uint8_t x,y;
+            x = randInt(0,game.playing_level->width);
+            y = randInt(0,game.playing_level->height);
+            if(!game.playing_level->cells[y*(game.playing_level->width-1)+x]) {
+                game.playing_level->cells[y*(game.playing_level->width-1)+x] = true;
+                done = true;
+            } else {
+                tries++;
+            }
+        }
+    }
 }
 //Frees the memory of the current playing level.
 void destroy_level() {
@@ -579,7 +655,15 @@ bool key_second_pressed() {
 }
 void next_level() {
     game.level++;
-    create_new_level(16,12,game.level*ALIVE_CELLS_PER_LEVEL + ALIVE_CELLS_BASE);
+    if(game.level == 1) {
+        create_new_level(16,12,game.level*ALIVE_CELLS_PER_LEVEL + ALIVE_CELLS_BASE);
+    } else {
+        uint24_t i;
+        for(i = 0; i < game.playing_level->width*game.playing_level->height; i++) {
+            game.playing_level->selected_cells[i] = false;
+        }
+        add_cells_to_level(game.level*ALIVE_CELLS_PER_LEVEL + ALIVE_CELLS_BASE);
+    }
 }
 
 void start_timer() {
@@ -630,3 +714,41 @@ Obselete; Function "randInt" provided by C libs.
 uint8_t random_number(uint8_t minimum,uint8_t maximum) {
     return (random() % (maximum-minimum)) + minimum;
 }*/
+
+void set_default_stats() {
+    unsigned int index, file, i;
+    ti_CloseAll();
+    
+    file = ti_Open("agogolstt","a+");
+
+    if(file) {
+        ti_Rewind(file);
+        ti_Read(&game.highscore,sizeof(uint16_t),1,file);
+    } else {
+        reset_stats();
+    }
+    ti_Close(file);
+}
+void save_stats() {
+    unsigned int index, file, i;
+    ti_CloseAll();
+
+    file = ti_Open("agogolstt","a+");
+    if(file) {
+        ti_Rewind(file);
+        ti_Write(&game.highscore,sizeof(uint16_t),1,file);
+    }
+    ti_Close(file);
+}
+void reset_stats() {
+    unsigned int index, file, i;
+    game.highscore = 0;
+    ti_CloseAll();
+
+    file = ti_Open("agogolstt","a+");
+    if(file) {
+        ti_Rewind(file);
+        ti_Write(0,sizeof(uint16_t),1,file);
+    }
+    ti_Close(file);
+}
