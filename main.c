@@ -178,6 +178,9 @@ void update_scene() {
             if(game.cursor_pos == 0) {
                 game.scene = 1;
             }
+            if(game.cursor_pos == 1) {
+                game.scene = 4;
+            }
             if(game.cursor_pos == 2) {
                 game.running = false;
             }
@@ -253,9 +256,13 @@ void update_scene() {
             game.level = 0;
         }
     } else if(game.scene == 4) {
-
+        if(key_enter_pressed()) {
+            game.cursor_pos = 0;
+            game.scene = 0;
+        }
     } else if(game.scene == 5) {
         if(key_enter_pressed()) {
+            game.cursor_pos = 0;
             game.scene = 0;
         }
     }
@@ -360,7 +367,12 @@ void render_scene () {
         render_centered_string("Press Enter",LCD_WIDTH/2,LCD_HEIGHT*3/4);
         free(fsa);
     } else if(game.scene == 4) {
-
+        render_background(false);
+        gfx_SetTextFGColor(0);
+        gfx_SetTextScale(2,2);
+        render_centered_string("Game by slimeenergy",LCD_WIDTH/2,LCD_HEIGHT/2-FONT_HEIGHT*1.5);
+        render_centered_string("Help by MateoC",LCD_WIDTH/2,LCD_HEIGHT/2+FONT_HEIGHT*1.5);
+        gfx_SetTextScale(1,1);
     } else if(game.scene == 5) {
         render_background(false);
         gfx_SetTextFGColor(0);
