@@ -30,8 +30,10 @@
 #define FANCY_SPEED 4 //The speed at which tiles fade in and out with a fancy background
 #define FANCY_TILE_COUNT 6 //How many fancy tiles should there be in splash screen
 #define TIME_LIMIT 60 //The counter will count upwards until it reaches TIME_LIMIT. It is displayed as TIME_LIMIT-counter
-#define ALIVE_CELLS_PER_LEVEL 2
+#define ALIVE_CELLS_PER_LEVEL 1
 #define ALIVE_CELLS_BASE 6
+#define KEY_DEBOUNCE_DELAY 4 //How long since key has been held to activate debounce
+#define KEY_DEBOUNCE 2 //How long betweeen each debounce
 
 //All of the timer code was stolen from the "second_counter2" example because I barely have an idea on how it works.
 #define SECOND 32768/1
@@ -58,6 +60,7 @@ typedef struct {
     uint8_t level; //The current level being played.
     uint24_t timer_seconds; //Amount of seconds counted by timer so far.
     uint8_t highscore;
+    uint8_t key_debounce_activation_timer;
 } game_t;
 
 typedef struct {
@@ -337,6 +340,9 @@ void render_scene () {
         render_level();
         gfx_SetColor(11);
         gfx_Rectangle(game.cursor_pos2*w,game.cursor_pos*h,w,h);
+        gfx_Rectangle(game.cursor_pos2*w-2,game.cursor_pos*h-2,w+4,h+4);
+        gfx_SetColor(12);
+        gfx_Rectangle(game.cursor_pos2*w-3,game.cursor_pos*h-3,w+6,h+6);
 
         gfx_SetColor(0);        
         gfx_PrintStringXY(seconds,3,3);
@@ -592,52 +598,95 @@ int24_t max(int24_t a, int24_t b) {
     }
     return b;
 }
+
+//These key_x_pressed functions probably need to be rewritten into one master function.
 bool key_up_pressed() {
     static bool up = false;
+    static uint8_t debounce = 0;
+    static uint8_t individual_debounce = 0;
     if(kb_Data[7] == kb_Up) {
-        if(!up) {
+        debounce++;
+        individual_debounce++;
+        if(!up || (debounce >= KEY_DEBOUNCE_DELAY && individual_debounce >= KEY_DEBOUNCE)) {
             up = true;
+            individual_debounce = 0;
             return true;
+        }
+        if(individual_debounce >= KEY_DEBOUNCE) {
+            individual_debounce = 0;
         }
         //The reason I'm returning false before it reaches the end, is that I don't want UP to be false while the key is pressed.
         return false;
     }
+    debounce = 0;
+    individual_debounce = 0;
     up = false;
     return false;
 }
 bool key_down_pressed() {
     static bool down = false;
+    static uint8_t debounce = 0;
+    static uint8_t individual_debounce = 0;
     if(kb_Data[7] == kb_Down) {
-        if(!down) {
+        debounce++;
+        individual_debounce++;
+        if(!down || (debounce >= KEY_DEBOUNCE_DELAY && individual_debounce >= KEY_DEBOUNCE)) {
             down = true;
+            individual_debounce = 0;
             return true;
+        }
+        if(individual_debounce >= KEY_DEBOUNCE) {
+            individual_debounce = 0;
         }
         return false;
     }
+    debounce = 0;
+    individual_debounce = 0;
     down = false;
     return false;
 }
 bool key_left_pressed() {
     static bool left = false;
+    static uint8_t debounce = 0;
+    static uint8_t individual_debounce = 0;
     if(kb_Data[7] == kb_Left) {
-        if(!left) {
+        debounce++;
+        individual_debounce++;
+        if(!left || (debounce >= KEY_DEBOUNCE_DELAY && individual_debounce >= KEY_DEBOUNCE)) {
             left = true;
+            individual_debounce = 0;
             return true;
+        }
+        if(individual_debounce >= KEY_DEBOUNCE) {
+            individual_debounce = 0;
         }
         return false;
     }
+    debounce = 0;
+    individual_debounce = 0;
     left = false;
     return false;
 }
 bool key_right_pressed() {
     static bool right = false;
+    static uint8_t debounce = 0;
+    static uint8_t individual_debounce = 0;
     if(kb_Data[7] == kb_Right) {
-        if(!right) {
+        debounce++;
+        individual_debounce++;
+        if(!right || (debounce >= KEY_DEBOUNCE_DELAY && individual_debounce >= KEY_DEBOUNCE)) {
             right = true;
+
+            individual_debounce = 0;
             return true;
+        }
+        if(individual_debounce >= KEY_DEBOUNCE) {
+            individual_debounce = 0;
         }
         return false;
     }
+    debounce = 0;
+    individual_debounce = 0;
     right = false;
     return false;
 }
